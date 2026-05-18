@@ -27,6 +27,7 @@ def main() -> None:
     parser.add_argument("--motion-iou-threshold", type=float, default=0.2)
     parser.add_argument("--area-ratio-threshold", type=float, default=0.45)
     parser.add_argument("--grounding-hf-model-id", default="IDEA-Research/grounding-dino-tiny")
+    parser.add_argument("--grounding-force-hf-backend", action="store_true")
     args = parser.parse_args()
 
     output_dir = ensure_dir(args.output_dir)
@@ -38,6 +39,7 @@ def main() -> None:
             PipelineConfig(
                 device=args.device,
                 grounding_hf_model_id=args.grounding_hf_model_id,
+                grounding_force_hf_backend=args.grounding_force_hf_backend,
             )
         )
         first_frame = cv2.imread(str(frames[0]), cv2.IMREAD_COLOR)

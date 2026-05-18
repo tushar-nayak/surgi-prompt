@@ -323,6 +323,19 @@ def train(args: argparse.Namespace) -> None:
     final_dir.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(final_dir)
     processor.save_pretrained(final_dir)
+    summary = {
+        "model_id": args.model_id,
+        "prompt_labels": prompt_labels,
+        "num_train_samples": len(train_samples),
+        "num_val_samples": len(val_samples),
+        "epochs": args.epochs,
+        "best_val_loss": None if best_val_loss == float("inf") else best_val_loss,
+        "final_train_loss": history[-1]["train_loss"] if history else None,
+        "final_val_loss": history[-1]["val_loss"] if history else None,
+        "best_checkpoint": str((output_dir / "best").resolve()),
+        "last_checkpoint": str(final_dir.resolve()),
+    }
+    (output_dir / "train_summary.json").write_text(json.dumps(summary, indent=2))
 
 
 def build_argparser() -> argparse.ArgumentParser:

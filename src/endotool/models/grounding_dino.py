@@ -23,6 +23,7 @@ class GroundingDinoDetector:
         label_map: dict[str, str] | None = None,
         label_to_id: dict[str, int] | None = None,
         hf_model_id: str = "IDEA-Research/grounding-dino-tiny",
+        force_hf_backend: bool = False,
     ) -> None:
         self.device = device
         self.box_threshold = box_threshold
@@ -30,7 +31,11 @@ class GroundingDinoDetector:
         self.label_map = label_map
         self.label_to_id = label_to_id or {}
         self.hf_model_id = hf_model_id
+        self.force_hf_backend = force_hf_backend
         self.backend = "official"
+        if self.force_hf_backend:
+            self._init_hf_backend()
+            return
         try:
             from groundingdino.datasets import transforms as T
             from groundingdino.util.inference import load_model, predict
@@ -90,8 +95,9 @@ class GroundingDinoDetector:
         from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
 
         self.backend = "hf"
-        self.processor = AutoProcessor.from_pretrained(self.hf_model_id)
-        self.hf_model = AutoModelForZeroShotObjectDetection.from_pretrained(self.hf_model_id).to(self.device)
+        model_ref = str(self.hf_model_id)
+        self.processor = AutoProcessor.from_pretrained(model_ref)
+        self.hf_model = AutoModelForZeroShotObjectDetection.from_pretrained(model_ref).to(self.device)
         self.hf_model.eval()
 
     def _detect_hf(self, image_bgr: np.ndarray, prompt: str) -> list[Detection]:

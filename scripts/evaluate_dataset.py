@@ -24,6 +24,8 @@ def main() -> None:
     parser.add_argument("--failure-iou-threshold", type=float, default=0.30)
     parser.add_argument("--label-map", default="configs/tool_label_map.yaml")
     parser.add_argument("--max-images", type=int, default=0)
+    parser.add_argument("--grounding-hf-model-id", default="IDEA-Research/grounding-dino-tiny")
+    parser.add_argument("--grounding-force-hf-backend", action="store_true")
     args = parser.parse_args()
 
     output_dir = ensure_dir(args.output_dir)
@@ -40,7 +42,14 @@ def main() -> None:
             raise ValueError("--masks-dir is required for --dataset-type kvasir")
         dataset = KvasirInstrumentDataset(args.images_dir, args.masks_dir)
 
-    pipeline = OpenVocabSurgicalPipeline(PipelineConfig(device=args.device, label_map_path=args.label_map))
+    pipeline = OpenVocabSurgicalPipeline(
+        PipelineConfig(
+            device=args.device,
+            label_map_path=args.label_map,
+            grounding_hf_model_id=args.grounding_hf_model_id,
+            grounding_force_hf_backend=args.grounding_force_hf_backend,
+        )
+    )
     evaluator = Evaluator()
     started = time.perf_counter()
     num_seen = 0

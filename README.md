@@ -140,6 +140,23 @@ bash scripts/train_real_detector.sh \
 
 The shell wrapper targets the stronger `IDEA-Research/grounding-dino-base` checkpoint by default and keeps training on real data only.
 
+Each invocation creates a timestamped run directory under the base output path, for example:
+
+- `outputs/train_endoscapes/coco_train_20260518_153000/train`
+- `outputs/train_endoscapes/coco_train_20260518_153000/eval_detection`
+- `outputs/train_endoscapes/coco_train_20260518_153000/eval_tracking`
+
+The wrapper also runs post-train evaluation automatically:
+
+- detection evaluation with [evaluate_dataset.py](/home/sofa/host_dir/hub/dino/scripts/evaluate_dataset.py)
+- tracking evaluation with [evaluate_tracking.py](/home/sofa/host_dir/hub/dino/scripts/evaluate_tracking.py) for COCO-style video datasets
+
+Per-run summaries are written to:
+
+- `run_summary.json` inside each run directory
+- `runs_summary.jsonl` in the base output directory
+- `runs_summary.csv` in the base output directory
+
 ## Notes
 
 - Grounding DINO prompting follows the official recommendation to separate class names with periods.
