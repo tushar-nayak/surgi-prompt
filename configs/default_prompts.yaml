@@ -1,0 +1,4 @@
+tool_prompts:
+  general: "surgical tool . forceps . grasper . catheter . guidewire ."
+  laparoscopy: "tool . grasper . hook . scissors . clip applier . irrigator ."
+  gi_endoscopy: "surgical tool . biopsy forceps . snare . balloon . catheter . guidewire ."

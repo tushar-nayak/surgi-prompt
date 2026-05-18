@@ -1,0 +1,31 @@
+canonical_labels:
+  surgical tool:
+    - surgical tool
+    - tool
+    - instrument
+  forceps:
+    - forceps
+    - biopsy forceps
+    - grasping forceps
+  grasper:
+    - grasper
+    - graspers
+    - atraumatic grasper
+  catheter:
+    - catheter
+    - cannula
+    - irrigator
+  guidewire:
+    - guidewire
+    - wire
+  snare:
+    - snare
+  balloon:
+    - balloon
+  hook:
+    - hook
+  scissors:
+    - scissors
+  clip applier:
+    - clip applier
+    - clipper
