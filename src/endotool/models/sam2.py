@@ -11,6 +11,7 @@ import torch
 
 from endotool.types import Detection
 from endotool.utils.io import ensure_dir
+from endotool.utils.tracking import match_detections_to_tracks
 
 
 class Sam2Segmenter:
@@ -73,8 +74,10 @@ class Sam2Segmenter:
                     )
                 started = time.perf_counter()
                 tracked: dict[int, list[Detection]] = {}
+                reground_stats = {"events": 0, "matched_refreshes": 0, "new_tracks": 0}
                 for frame_idx, object_ids, mask_logits in self.video_predictor.propagate_in_video(state):
                     current: list[Detection] = []
+                    active_tracks: dict[int, Detection] = {}
                     image = cv2.imread(str(frame_paths[frame_idx]), cv2.IMREAD_COLOR)
                     for obj_id, mask_logit in zip(object_ids, mask_logits):
                         mask = mask_logit[0].cpu().numpy() > 0.0
@@ -84,21 +87,33 @@ class Sam2Segmenter:
                         seed = object_seeds.get(int(obj_id))
                         if seed is None:
                             continue
-                        current.append(
-                            Detection(
-                                label=seed.label,
-                                score=seed.score,
-                                box_xyxy=box.astype(np.float32),
-                                mask=mask,
-                                label_id=seed.label_id,
-                            )
+                        det = Detection(
+                            label=seed.label,
+                            score=seed.score,
+                            box_xyxy=box.astype(np.float32),
+                            mask=mask,
+                            label_id=seed.label_id,
                         )
+                        current.append(det)
+                        active_tracks[int(obj_id)] = det
                     if detector is not None and prompt and reground_every > 0 and frame_idx > 0 and frame_idx % reground_every == 0:
+                        reground_stats["events"] += 1
                         refreshed = detector.detect(image, prompt)
                         refreshed = self.refine_image_masks(image, refreshed)
+                        matches, unmatched = match_detections_to_tracks(refreshed, active_tracks)
+                        for track_id, det in matches:
+                            reground_stats["matched_refreshes"] += 1
+                            object_seeds[track_id] = det
+                            self.video_predictor.add_new_points_or_box(
+                                inference_state=state,
+                                frame_idx=frame_idx,
+                                obj_id=track_id,
+                                box=det.box_xyxy.astype(np.float32),
+                            )
                         next_obj_id = max(object_seeds.keys(), default=0) + 1
-                        for offset, det in enumerate(refreshed):
+                        for offset, det in enumerate(unmatched):
                             add_idx = next_obj_id + offset
+                            reground_stats["new_tracks"] += 1
                             object_seeds[add_idx] = det
                             self.video_predictor.add_new_points_or_box(
                                 inference_state=state,
@@ -106,7 +121,8 @@ class Sam2Segmenter:
                                 obj_id=add_idx,
                                 box=det.box_xyxy.astype(np.float32),
                             )
-                        current = refreshed or current
+                        if refreshed:
+                            current = [det for _, det in matches] + unmatched
                     tracked[frame_idx] = current
                     if output_frames_dir is not None:
                         ensure_dir(output_frames_dir)

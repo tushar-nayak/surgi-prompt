@@ -9,6 +9,7 @@ import torch
 
 from endotool.types import Detection
 from endotool.utils.labels import normalize_label
+from endotool.utils.tracking import suppress_duplicate_detections
 
 
 class GroundingDinoDetector:
@@ -83,7 +84,7 @@ class GroundingDinoDetector:
                     label_id=self.label_to_id.get(normalized),
                 )
             )
-        return detections
+        return suppress_duplicate_detections(detections)
 
     def _init_hf_backend(self) -> None:
         from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
@@ -118,4 +119,4 @@ class GroundingDinoDetector:
                     label_id=self.label_to_id.get(normalized),
                 )
             )
-        return detections
+        return suppress_duplicate_detections(detections)

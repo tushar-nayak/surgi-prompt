@@ -48,6 +48,7 @@ def main() -> None:
             "fps": fps,
             "num_frames": len(tracked),
             "reground_every": args.reground_every,
+            "mean_active_tracks": (sum(len(items) for items in tracked.values()) / max(len(tracked), 1)),
             "seed_detections": [
                 {"label": det.label, "score": det.score, "box_xyxy": det.box_xyxy.tolist()}
                 for det in detections
