@@ -17,6 +17,10 @@ def main() -> None:
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--reground-every", type=int, default=0)
+    parser.add_argument("--reground-mode", choices=["fixed", "adaptive", "hybrid"], default="fixed")
+    parser.add_argument("--min-active-tracks", type=int, default=1)
+    parser.add_argument("--motion-iou-threshold", type=float, default=0.2)
+    parser.add_argument("--area-ratio-threshold", type=float, default=0.45)
     args = parser.parse_args()
 
     output_dir = ensure_dir(args.output_dir)
@@ -30,13 +34,17 @@ def main() -> None:
 
     detections = pipeline.detector.detect(first_frame, args.prompt)
     detections = pipeline.segmenter.refine_image_masks(first_frame, detections)
-    tracked, fps = pipeline.segmenter.track_video(
+    tracked, fps, reground_stats = pipeline.segmenter.track_video(
         args.video,
         detections,
         output_frames_dir=output_dir / "frames",
         detector=pipeline.detector,
         prompt=args.prompt,
         reground_every=args.reground_every,
+        reground_mode=args.reground_mode,
+        min_active_tracks=args.min_active_tracks,
+        motion_iou_threshold=args.motion_iou_threshold,
+        area_ratio_threshold=args.area_ratio_threshold,
     )
 
     _render_video(args.video, tracked, output_dir / "overlay.mp4")
@@ -48,7 +56,9 @@ def main() -> None:
             "fps": fps,
             "num_frames": len(tracked),
             "reground_every": args.reground_every,
+            "reground_mode": args.reground_mode,
             "mean_active_tracks": (sum(len(items) for items in tracked.values()) / max(len(tracked), 1)),
+            "reground_stats": reground_stats,
             "seed_detections": [
                 {"label": det.label, "score": det.score, "box_xyxy": det.box_xyxy.tolist()}
                 for det in detections

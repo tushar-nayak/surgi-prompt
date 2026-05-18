@@ -11,7 +11,7 @@ import torch
 
 from endotool.types import Detection
 from endotool.utils.io import ensure_dir
-from endotool.utils.tracking import match_detections_to_tracks
+from endotool.utils.tracking import box_area, box_iou, match_detections_to_tracks
 
 
 class Sam2Segmenter:
@@ -57,7 +57,11 @@ class Sam2Segmenter:
         detector=None,
         prompt: str | None = None,
         reground_every: int = 0,
-    ) -> tuple[dict[int, list[Detection]], float]:
+        reground_mode: str = "fixed",
+        min_active_tracks: int = 1,
+        motion_iou_threshold: float = 0.2,
+        area_ratio_threshold: float = 0.45,
+    ) -> tuple[dict[int, list[Detection]], float, dict]:
         frame_dir = Path(tempfile.mkdtemp(prefix="sam2_frames_"))
         try:
             frame_paths = _extract_video_frames(video_path, frame_dir)
@@ -75,6 +79,7 @@ class Sam2Segmenter:
                 started = time.perf_counter()
                 tracked: dict[int, list[Detection]] = {}
                 reground_stats = {"events": 0, "matched_refreshes": 0, "new_tracks": 0}
+                previous_active_tracks: dict[int, Detection] = {}
                 for frame_idx, object_ids, mask_logits in self.video_predictor.propagate_in_video(state):
                     current: list[Detection] = []
                     active_tracks: dict[int, Detection] = {}
@@ -96,7 +101,31 @@ class Sam2Segmenter:
                         )
                         current.append(det)
                         active_tracks[int(obj_id)] = det
-                    if detector is not None and prompt and reground_every > 0 and frame_idx > 0 and frame_idx % reground_every == 0:
+                    should_reground = False
+                    if detector is not None and prompt and frame_idx > 0:
+                        if reground_mode == "fixed":
+                            should_reground = reground_every > 0 and frame_idx % reground_every == 0
+                        elif reground_mode == "adaptive":
+                            should_reground = _should_reground_adaptive(
+                                active_tracks=active_tracks,
+                                previous_active_tracks=previous_active_tracks,
+                                seed_count=len(detections),
+                                min_active_tracks=min_active_tracks,
+                                motion_iou_threshold=motion_iou_threshold,
+                                area_ratio_threshold=area_ratio_threshold,
+                            )
+                        elif reground_mode == "hybrid":
+                            fixed_due = reground_every > 0 and frame_idx % reground_every == 0
+                            adaptive_due = _should_reground_adaptive(
+                                active_tracks=active_tracks,
+                                previous_active_tracks=previous_active_tracks,
+                                seed_count=len(detections),
+                                min_active_tracks=min_active_tracks,
+                                motion_iou_threshold=motion_iou_threshold,
+                                area_ratio_threshold=area_ratio_threshold,
+                            )
+                            should_reground = fixed_due or adaptive_due
+                    if should_reground:
                         reground_stats["events"] += 1
                         refreshed = detector.detect(image, prompt)
                         refreshed = self.refine_image_masks(image, refreshed)
@@ -123,6 +152,7 @@ class Sam2Segmenter:
                             )
                         if refreshed:
                             current = [det for _, det in matches] + unmatched
+                    previous_active_tracks = active_tracks
                     tracked[frame_idx] = current
                     if output_frames_dir is not None:
                         ensure_dir(output_frames_dir)
@@ -133,7 +163,9 @@ class Sam2Segmenter:
                         cv2.imwrite(str(Path(output_frames_dir) / f"{frame_idx:05d}.png"), overlay)
                 elapsed = time.perf_counter() - started
             fps = len(frame_paths) / max(elapsed, 1e-6)
-            return tracked, fps
+            reground_stats["mode"] = reground_mode
+            reground_stats["num_seed_tracks"] = len(detections)
+            return tracked, fps, reground_stats
         finally:
             shutil.rmtree(frame_dir, ignore_errors=True)
 
@@ -163,3 +195,36 @@ def _mask_to_box(mask: np.ndarray) -> np.ndarray | None:
     if xs.size == 0 or ys.size == 0:
         return None
     return np.array([xs.min(), ys.min(), xs.max(), ys.max()], dtype=np.float32)
+
+
+def _should_reground_adaptive(
+    active_tracks: dict[int, Detection],
+    previous_active_tracks: dict[int, Detection],
+    seed_count: int,
+    min_active_tracks: int,
+    motion_iou_threshold: float,
+    area_ratio_threshold: float,
+) -> bool:
+    if not active_tracks:
+        return True
+    if len(active_tracks) < min(min_active_tracks, max(seed_count, 1)):
+        return True
+    if not previous_active_tracks:
+        return False
+
+    shared_ids = sorted(set(active_tracks).intersection(previous_active_tracks))
+    if not shared_ids:
+        return False
+
+    ious = []
+    area_ratios = []
+    for track_id in shared_ids:
+        current = active_tracks[track_id]
+        previous = previous_active_tracks[track_id]
+        ious.append(box_iou(current.box_xyxy, previous.box_xyxy))
+        prev_area = max(box_area(previous.box_xyxy), 1e-6)
+        area_ratios.append(box_area(current.box_xyxy) / prev_area)
+
+    mean_iou = float(np.mean(ious)) if ious else 1.0
+    mean_area_ratio = float(np.mean(area_ratios)) if area_ratios else 1.0
+    return mean_iou < motion_iou_threshold or mean_area_ratio < area_ratio_threshold
