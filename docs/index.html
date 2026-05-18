@@ -166,30 +166,27 @@
 
       <section>
         <div class="wrap">
-          <h2>Tracked Files</h2>
+          <h2>Playable Videos</h2>
           <p class="section-intro">
-            Publishable artifacts committed for the GitHub Pages site.
+            Real-sequence video overlays exported from the repository runs. The first video uses seeded tracking only; the second adds periodic re-grounding every 30 frames.
           </p>
-          <div class="grid-2">
-            <div class="panel">
-              <h3>JSON</h3>
-              <p><a href="assets/results/endoscapes_eval_subset_metrics.json">endoscapes_eval_subset_metrics.json</a></p>
-              <p><a href="assets/results/smoke_frame_overlay.json">smoke_frame_overlay.json</a></p>
-              <p><a href="assets/results/smoke_video_summary.json">smoke_video_summary.json</a></p>
-              <p><a href="assets/results/video_reground_summary.json">video_reground_summary.json</a></p>
-            </div>
-            <div class="panel">
-              <h3>Notes</h3>
-              <p>
-                The repository avoids synthetic data. The current environment uses a Transformers-hosted Grounding DINO fallback because the native custom CUDA extension is not available on this machine.
-              </p>
-              <p>
-                SAM2 tracking completed successfully in this environment, but its optional compiled post-processing extension is also absent.
-              </p>
-            </div>
+          <div class="gallery">
+            <figure class="panel video-frame">
+              <video controls preload="metadata" playsinline>
+                <source src="assets/results/smoke_video_overlay.mp4" type="video/mp4">
+              </video>
+              <figcaption>Baseline tracked overlay on the 120-frame Endoscapes sequence.</figcaption>
+            </figure>
+            <figure class="panel video-frame">
+              <video controls preload="metadata" playsinline>
+                <source src="assets/results/video_reground_overlay.mp4" type="video/mp4">
+              </video>
+              <figcaption>Tracked overlay with re-grounding every 30 frames on the same real sequence.</figcaption>
+            </figure>
           </div>
         </div>
       </section>
+
     </main>
   </body>
 </html>

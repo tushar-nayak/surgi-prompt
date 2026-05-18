@@ -210,7 +210,19 @@ main section {
   overflow: hidden;
 }
 
+.video-frame {
+  padding: 0;
+  overflow: hidden;
+}
+
 .image-frame img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #0e1318;
+}
+
+.video-frame video {
   display: block;
   width: 100%;
   height: auto;
