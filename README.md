@@ -4,7 +4,7 @@ Pipeline:
 
 `endoscopic frame/video -> text prompt -> Grounding DINO boxes -> SAM2 mask refinement -> video tracking + overlay -> mAP / IoU / FPS / failure cases`
 
-This project is inference-first. It is set up for real endoscopic and laparoscopic datasets only. No synthetic dataset loader is included.
+This project supports both inference and real-data fine-tuning. It is set up for real endoscopic and laparoscopic datasets only. No synthetic dataset loader is included.
 
 ## Current Results
 
@@ -112,6 +112,32 @@ python scripts/evaluate_dataset.py \
   --masks-dir /data/kvasir-instrument/masks \
   --prompt "surgical tool . forceps . snare . balloon . catheter ." \
   --output-dir outputs/kvasir_eval
+
+## Train on real datasets
+
+Fine-tune the Hugging Face Grounding DINO backend on real COCO-style endoscopy data:
+
+```bash
+bash scripts/train_real_detector.sh \
+  coco \
+  /data/endoscapes/train_seg \
+  /data/endoscapes/train_seg/annotation_coco.json \
+  outputs/train_endoscapes \
+  /data/endoscapes/val_seg \
+  /data/endoscapes/val_seg/annotation_coco.json
+```
+
+Kvasir-Instrument:
+
+```bash
+bash scripts/train_real_detector.sh \
+  kvasir \
+  /data/kvasir-instrument/images \
+  /data/kvasir-instrument/masks \
+  outputs/train_kvasir
+```
+
+The shell wrapper targets the stronger `IDEA-Research/grounding-dino-base` checkpoint by default and keeps training on real data only.
 ```
 
 ## Notes

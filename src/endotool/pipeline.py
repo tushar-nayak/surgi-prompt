@@ -24,6 +24,7 @@ class PipelineConfig:
     box_threshold: float = 0.30
     text_threshold: float = 0.25
     label_map_path: str | None = "configs/tool_label_map.yaml"
+    grounding_hf_model_id: str = "IDEA-Research/grounding-dino-tiny"
 
 
 class OpenVocabSurgicalPipeline:
@@ -39,6 +40,7 @@ class OpenVocabSurgicalPipeline:
             device=config.device,
             label_map=self.alias_to_canonical,
             label_to_id=self.label_to_id,
+            hf_model_id=config.grounding_hf_model_id,
         )
         self.segmenter = Sam2Segmenter(
             config_path=config.sam2_config,

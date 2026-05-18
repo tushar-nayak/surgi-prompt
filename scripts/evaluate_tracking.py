@@ -26,6 +26,7 @@ def main() -> None:
     parser.add_argument("--min-active-tracks", type=int, default=1)
     parser.add_argument("--motion-iou-threshold", type=float, default=0.2)
     parser.add_argument("--area-ratio-threshold", type=float, default=0.45)
+    parser.add_argument("--grounding-hf-model-id", default="IDEA-Research/grounding-dino-tiny")
     args = parser.parse_args()
 
     output_dir = ensure_dir(args.output_dir)
@@ -33,7 +34,12 @@ def main() -> None:
     video_path = build_temp_video(frames)
 
     try:
-        pipeline = OpenVocabSurgicalPipeline(PipelineConfig(device=args.device))
+        pipeline = OpenVocabSurgicalPipeline(
+            PipelineConfig(
+                device=args.device,
+                grounding_hf_model_id=args.grounding_hf_model_id,
+            )
+        )
         first_frame = cv2.imread(str(frames[0]), cv2.IMREAD_COLOR)
         detections = pipeline.detector.detect(first_frame, args.prompt)
         detections = pipeline.segmenter.refine_image_masks(first_frame, detections)

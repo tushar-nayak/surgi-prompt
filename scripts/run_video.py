@@ -21,10 +21,16 @@ def main() -> None:
     parser.add_argument("--min-active-tracks", type=int, default=1)
     parser.add_argument("--motion-iou-threshold", type=float, default=0.2)
     parser.add_argument("--area-ratio-threshold", type=float, default=0.45)
+    parser.add_argument("--grounding-hf-model-id", default="IDEA-Research/grounding-dino-tiny")
     args = parser.parse_args()
 
     output_dir = ensure_dir(args.output_dir)
-    pipeline = OpenVocabSurgicalPipeline(PipelineConfig(device=args.device))
+    pipeline = OpenVocabSurgicalPipeline(
+        PipelineConfig(
+            device=args.device,
+            grounding_hf_model_id=args.grounding_hf_model_id,
+        )
+    )
 
     cap = cv2.VideoCapture(args.video)
     ok, first_frame = cap.read()
