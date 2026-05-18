@@ -23,6 +23,7 @@ def main() -> None:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--failure-iou-threshold", type=float, default=0.30)
     parser.add_argument("--label-map", default="configs/tool_label_map.yaml")
+    parser.add_argument("--max-images", type=int, default=0)
     args = parser.parse_args()
 
     output_dir = ensure_dir(args.output_dir)
@@ -42,8 +43,11 @@ def main() -> None:
     pipeline = OpenVocabSurgicalPipeline(PipelineConfig(device=args.device, label_map_path=args.label_map))
     evaluator = Evaluator()
     started = time.perf_counter()
+    num_seen = 0
 
     for sample in dataset:
+        if args.max_images > 0 and num_seen >= args.max_images:
+            break
         image = read_image(sample.image_path)
         preds = pipeline.detector.detect(image, args.prompt)
         preds = pipeline.segmenter.refine_image_masks(image, preds)
@@ -51,10 +55,12 @@ def main() -> None:
         iou = best_mask_iou(sample.masks, [pred.mask for pred in preds]) if sample.masks else 0.0
         if sample.masks and iou < args.failure_iou_threshold:
             save_failure_case(image, preds, failures_dir / f"{sample.image_id}.png")
+        num_seen += 1
 
     elapsed = time.perf_counter() - started
     metrics = evaluator.compute()
-    metrics["fps"] = len(dataset) / max(elapsed, 1e-6)
+    metrics["fps"] = num_seen / max(elapsed, 1e-6)
+    metrics["num_images"] = num_seen
     metrics["label_to_id"] = label_to_id
     write_json(output_dir / "metrics.json", metrics)
 

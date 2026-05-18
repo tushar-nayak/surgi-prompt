@@ -8,12 +8,58 @@ IMAGE_PATH="${1:-}"
 VIDEO_PATH="${2:-}"
 PROMPT="${3:-surgical tool . forceps . grasper . catheter . guidewire .}"
 DEVICE="${DEVICE:-cuda}"
+PYTHON_BIN="${PYTHON_BIN:-python3.10}"
 
-python3 -m venv .venv
+if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+  PYTHON_BIN="python3"
+fi
+
+if [[ ! -x .venv/bin/python ]]; then
+  rm -rf .venv
+  "${PYTHON_BIN}" -m venv .venv
+fi
 source .venv/bin/activate
 python -m pip install --upgrade pip
-pip install -r requirements.txt
-bash scripts/download_checkpoints.sh
+
+ensure_python_package() {
+  local module_name="$1"
+  shift
+  if ! python -c "import ${module_name}" >/dev/null 2>&1; then
+    pip install "$@"
+  fi
+}
+
+ensure_torch_stack() {
+  if ! python - <<'PY' >/dev/null 2>&1
+import torch
+import torchvision
+PY
+  then
+    pip install torch torchvision
+  fi
+}
+
+ensure_python_package wheel wheel setuptools
+ensure_torch_stack
+ensure_python_package cv2 opencv-python
+ensure_python_package yaml pyyaml
+ensure_python_package tqdm tqdm
+ensure_python_package pycocotools pycocotools
+if ! python - <<'PY' >/dev/null 2>&1
+from torchmetrics.detection.mean_ap import MeanAveragePrecision
+PY
+then
+  pip install "torchmetrics[detection]"
+fi
+ensure_python_package transformers "transformers<5"
+ensure_python_package sam2 "git+https://github.com/facebookresearch/sam2.git"
+ensure_python_package groundingdino --no-build-isolation "git+https://github.com/IDEA-Research/GroundingDINO.git"
+
+pip install -e .
+
+if [[ ! -s checkpoints/groundingdino_swint_ogc.pth || ! -s checkpoints/sam2.1_hiera_large.pt ]]; then
+  bash scripts/download_checkpoints.sh
+fi
 
 if [[ -n "${IMAGE_PATH}" ]]; then
   python scripts/run_image.py \

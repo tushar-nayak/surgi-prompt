@@ -61,8 +61,10 @@ class Sam2Segmenter:
         try:
             frame_paths = _extract_video_frames(video_path, frame_dir)
             state = self.video_predictor.init_state(video_path=str(frame_dir))
+            object_seeds: dict[int, Detection] = {}
             with torch.inference_mode(), torch.autocast(device_type=self.device.split(":")[0], dtype=self.autocast_dtype, enabled=self.device.startswith("cuda")):
                 for obj_id, det in enumerate(detections, start=1):
+                    object_seeds[obj_id] = det
                     self.video_predictor.add_new_points_or_box(
                         inference_state=state,
                         frame_idx=0,
@@ -79,7 +81,9 @@ class Sam2Segmenter:
                         box = _mask_to_box(mask)
                         if box is None:
                             continue
-                        seed = detections[int(obj_id) - 1]
+                        seed = object_seeds.get(int(obj_id))
+                        if seed is None:
+                            continue
                         current.append(
                             Detection(
                                 label=seed.label,
@@ -92,14 +96,16 @@ class Sam2Segmenter:
                     if detector is not None and prompt and reground_every > 0 and frame_idx > 0 and frame_idx % reground_every == 0:
                         refreshed = detector.detect(image, prompt)
                         refreshed = self.refine_image_masks(image, refreshed)
-                        for add_idx, det in enumerate(refreshed, start=len(detections) + 1):
+                        next_obj_id = max(object_seeds.keys(), default=0) + 1
+                        for offset, det in enumerate(refreshed):
+                            add_idx = next_obj_id + offset
+                            object_seeds[add_idx] = det
                             self.video_predictor.add_new_points_or_box(
                                 inference_state=state,
                                 frame_idx=frame_idx,
                                 obj_id=add_idx,
                                 box=det.box_xyxy.astype(np.float32),
                             )
-                        detections = refreshed or detections
                         current = refreshed or current
                     tracked[frame_idx] = current
                     if output_frames_dir is not None:

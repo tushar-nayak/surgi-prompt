@@ -35,15 +35,20 @@ class CocoEndoscopyDataset:
             label_ids = []
             masks = []
             for ann in anns:
+                normalized = normalize_label(categories[ann["category_id"]], label_map)
+                if category_id_to_label_id:
+                    label_id = category_id_to_label_id.get(normalized)
+                    if label_id is None:
+                        continue
+                    label_ids.append(label_id)
                 x, y, w, h = ann["bbox"]
                 boxes.append([x, y, x + w, y + h])
-                normalized = normalize_label(categories[ann["category_id"]], label_map)
                 labels.append(normalized)
-                if category_id_to_label_id:
-                    label_ids.append(category_id_to_label_id[normalized])
                 segmentation = ann.get("segmentation")
                 if segmentation:
                     masks.append(_decode_segmentation(segmentation, image_meta["height"], image_meta["width"]))
+            if not boxes:
+                continue
             self.samples.append(
                 DatasetSample(
                     image_id=image_id,

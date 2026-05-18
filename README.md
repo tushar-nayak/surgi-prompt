@@ -65,7 +65,8 @@ python scripts/evaluate_dataset.py \
   --images-dir /data/endoscapes/test_seg \
   --annotations /data/endoscapes/test_seg/annotation_coco.json \
   --prompt "tool . forceps . grasper . hook . clip applier . scissors ." \
-  --output-dir outputs/endoscapes_eval
+  --output-dir outputs/endoscapes_eval \
+  --max-images 100
 ```
 
 Kvasir-Instrument:
@@ -83,6 +84,8 @@ python scripts/evaluate_dataset.py \
 
 - Grounding DINO prompting follows the official recommendation to separate class names with periods.
 - SAM 2 video propagation uses box prompts from frame 0 by default.
+- `scripts/step1_install_and_smoketest.sh` is incremental and skips reinstalling dependencies or redownloading checkpoints when they are already present.
+- `scripts/step2_class_aware_eval.sh` accepts an optional `max_images` argument for bounded real-data smoke evaluation.
 - This scaffold avoids any synthetic train/val/test split. Use official real-data splits from the dataset publishers.
 
 ## Sources

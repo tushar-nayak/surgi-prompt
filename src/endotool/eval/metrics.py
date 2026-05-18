@@ -16,6 +16,7 @@ class Evaluator:
         self.det_map = MeanAveragePrecision(box_format="xyxy", iou_type="bbox")
         self.seg_map = MeanAveragePrecision(iou_type="segm")
         self.mask_ious: list[float] = []
+        self.num_updates = 0
 
     def update(self, sample: DatasetSample, predictions: list[Detection]) -> None:
         pred_boxes = np.array([pred.box_xyxy for pred in predictions], dtype=np.float32) if predictions else np.zeros((0, 4), dtype=np.float32)
@@ -27,6 +28,7 @@ class Evaluator:
             [dict(boxes=torch.tensor(pred_boxes), scores=torch.tensor(pred_scores), labels=torch.tensor(pred_labels))],
             [dict(boxes=torch.tensor(sample.boxes_xyxy), labels=torch.tensor(target_labels))],
         )
+        self.num_updates += 1
 
         if sample.masks:
             height, width = sample.masks[0].shape
@@ -43,6 +45,14 @@ class Evaluator:
             self.mask_ious.append(best_mask_iou(sample.masks, [pred.mask for pred in predictions if pred.mask is not None]))
 
     def compute(self) -> dict[str, float]:
+        if self.num_updates == 0:
+            return {
+                "bbox_map": 0.0,
+                "bbox_map_50": 0.0,
+                "segm_map": 0.0,
+                "segm_map_50": 0.0,
+                "mean_mask_iou": 0.0,
+            }
         det = self.det_map.compute()
         seg = self.seg_map.compute()
         return {

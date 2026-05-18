@@ -15,6 +15,11 @@ REGROUND_EVERY="${3:-30}"
 PROMPT="${4:-surgical tool . forceps . grasper . catheter . guidewire .}"
 DEVICE="${DEVICE:-cuda}"
 
+if [[ ! -f .venv/bin/activate ]]; then
+  echo ".venv is missing. Run scripts/step1_install_and_smoketest.sh first."
+  exit 1
+fi
+
 source .venv/bin/activate
 
 python scripts/run_video.py \
