@@ -112,6 +112,7 @@ python scripts/evaluate_dataset.py \
   --masks-dir /data/kvasir-instrument/masks \
   --prompt "surgical tool . forceps . snare . balloon . catheter ." \
   --output-dir outputs/kvasir_eval
+```
 
 ## Train on real datasets
 
@@ -138,7 +139,6 @@ bash scripts/train_real_detector.sh \
 ```
 
 The shell wrapper targets the stronger `IDEA-Research/grounding-dino-base` checkpoint by default and keeps training on real data only.
-```
 
 ## Notes
 
