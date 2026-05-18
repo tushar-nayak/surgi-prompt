@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SurgiPrompt</title>
+    <meta
+      name="description"
+      content="Open-vocabulary surgical tool detection, segmentation, and tracking in real endoscopic and laparoscopic video using Grounding DINO and SAM2."
+    >
+    <link rel="stylesheet" href="styles.css?v=1">
+  </head>
+  <body>
+    <header>
+      <div class="wrap hero">
+        <p class="eyebrow">Real Endoscopy Results</p>
+        <h1>SurgiPrompt</h1>
+        <p class="lead">
+          Open-vocabulary surgical tool detection, segmentation, and tracking for real endoscopic and laparoscopic imagery using Grounding DINO and SAM2, with prompt-grounded boxes, refined masks, and video propagation.
+        </p>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/tushar-nayak/surgi-prompt">Repository</a>
+          <a class="button" href="https://github.com/tushar-nayak/surgi-prompt/blob/main/README.md">README</a>
+          <a class="button" href="assets/results/endoscapes_eval_subset_metrics.json">Metrics JSON</a>
+          <a class="button" href="assets/results/smoke_video_summary.json">Video Summary</a>
+        </div>
+        <div class="metrics">
+          <div class="metric">
+            <b>0.2139</b>
+            <span>bbox mAP</span>
+          </div>
+          <div class="metric">
+            <b>0.3926</b>
+            <span>mean mask IoU</span>
+          </div>
+          <div class="metric">
+            <b>5.58</b>
+            <span>video FPS with re-grounding</span>
+          </div>
+          <div class="metric">
+            <b>120</b>
+            <span>tracked real frames</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section>
+        <div class="wrap">
+          <h2>Pipeline</h2>
+          <p class="section-intro">
+            The repository implements an inference-first surgical tool pipeline on real endoscopy data only. A text prompt grounds candidate tools, SAM2 refines masks, and the same objects are propagated through video.
+          </p>
+          <div class="architecture">
+            <div class="arch-card">
+              <span class="arch-step">1</span>
+              <h3>Prompt Grounding</h3>
+              <p>
+                Text prompts such as <code>forceps</code>, <code>grasper</code>, <code>catheter</code>, and <code>guidewire</code> are grounded into tool proposals.
+              </p>
+            </div>
+            <div class="arch-card">
+              <span class="arch-step">2</span>
+              <h3>Mask Refinement</h3>
+              <p>
+                SAM2 converts tool boxes into image masks so the output is usable for segmentation-style evaluation instead of box-only inspection.
+              </p>
+            </div>
+            <div class="arch-card">
+              <span class="arch-step">3</span>
+              <h3>Video Tracking</h3>
+              <p>
+                Seed detections from the first frame are propagated through a real Endoscapes frame sequence with optional periodic re-grounding.
+              </p>
+            </div>
+            <div class="arch-card">
+              <span class="arch-step">4</span>
+              <h3>Real-Data Evaluation</h3>
+              <p>
+                The code reports box mAP, segmentation mAP, mask IoU, throughput, and saved failure cases on real datasets rather than synthetic splits.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>Current Results</h2>
+          <p class="section-intro">
+            These numbers come from tracked local runs in this repository on real Endoscapes data. The evaluation result shown here is a bounded tool-only subset smoke run, not a full benchmark claim.
+          </p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Run</th>
+                  <th>bbox mAP</th>
+                  <th>bbox mAP@50</th>
+                  <th>segm mAP</th>
+                  <th>mean mask IoU</th>
+                  <th>FPS</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="highlight">
+                  <td>Endoscapes tool subset</td>
+                  <td>0.2139</td>
+                  <td>0.2492</td>
+                  <td>0.0990</td>
+                  <td>0.3926</td>
+                  <td>2.1140</td>
+                </tr>
+                <tr>
+                  <td>Video tracking</td>
+                  <td>-</td>
+                  <td>-</td>
+                  <td>-</td>
+                  <td>-</td>
+                  <td>5.3907</td>
+                </tr>
+                <tr>
+                  <td>Video re-grounding every 30 frames</td>
+                  <td>-</td>
+                  <td>-</td>
+                  <td>-</td>
+                  <td>-</td>
+                  <td>5.5816</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="caption">
+            Real inputs used here: one Endoscapes frame, a 120-frame Endoscapes sequence video, and a 9-image tool-only Endoscapes subset for class-aware evaluation.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>Figures</h2>
+          <p class="section-intro">
+            Lightweight tracked artifacts from the real runs.
+          </p>
+          <div class="gallery">
+            <figure class="panel image-frame">
+              <img src="assets/results/smoke_frame_overlay.jpg" alt="Prompt-grounded and segmented surgical tool overlay on a real Endoscapes frame">
+              <figcaption>Single real Endoscapes frame with prompt-grounded tool detections and SAM2 masks.</figcaption>
+            </figure>
+            <figure class="panel image-frame">
+              <img src="assets/results/smoke_video_frame_00000.png" alt="Tracked tool overlay on the first frame of the real Endoscapes sequence">
+              <figcaption>Frame 0 from the tracked real sequence.</figcaption>
+            </figure>
+            <figure class="panel image-frame">
+              <img src="assets/results/smoke_video_frame_00060.png" alt="Tracked tool overlay on a middle frame of the real Endoscapes sequence">
+              <figcaption>Mid-sequence tracking result without periodic re-grounding.</figcaption>
+            </figure>
+            <figure class="panel image-frame">
+              <img src="assets/results/video_reground_frame_00060.png" alt="Tracked tool overlay on a middle frame of the re-grounded Endoscapes sequence">
+              <figcaption>Mid-sequence tracking result with re-grounding every 30 frames.</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>Tracked Files</h2>
+          <p class="section-intro">
+            Publishable artifacts committed for the GitHub Pages site.
+          </p>
+          <div class="grid-2">
+            <div class="panel">
+              <h3>JSON</h3>
+              <p><a href="assets/results/endoscapes_eval_subset_metrics.json">endoscapes_eval_subset_metrics.json</a></p>
+              <p><a href="assets/results/smoke_frame_overlay.json">smoke_frame_overlay.json</a></p>
+              <p><a href="assets/results/smoke_video_summary.json">smoke_video_summary.json</a></p>
+              <p><a href="assets/results/video_reground_summary.json">video_reground_summary.json</a></p>
+            </div>
+            <div class="panel">
+              <h3>Notes</h3>
+              <p>
+                The repository avoids synthetic data. The current environment uses a Transformers-hosted Grounding DINO fallback because the native custom CUDA extension is not available on this machine.
+              </p>
+              <p>
+                SAM2 tracking completed successfully in this environment, but its optional compiled post-processing extension is also absent.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

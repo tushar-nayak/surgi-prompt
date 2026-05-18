@@ -1,0 +1,20 @@
+{
+  "bbox_map": 0.2138613909482956,
+  "bbox_map_50": 0.24917492270469666,
+  "segm_map": 0.09900990128517151,
+  "segm_map_50": 0.09900990128517151,
+  "mean_mask_iou": 0.39261310539144534,
+  "fps": 2.113991586803146,
+  "label_to_id": {
+    "balloon": 1,
+    "catheter": 2,
+    "clip applier": 3,
+    "forceps": 4,
+    "grasper": 5,
+    "guidewire": 6,
+    "hook": 7,
+    "scissors": 8,
+    "snare": 9,
+    "surgical tool": 10
+  }
+}

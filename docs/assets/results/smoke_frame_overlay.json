@@ -1,0 +1,51 @@
+{
+  "image": "../endo-splat/endoscapes/train/8_14050.jpg",
+  "prompt": "surgical tool . forceps . grasper . catheter . guidewire .",
+  "fps": 0.513688321008405,
+  "detections": [
+    {
+      "label": "catheter",
+      "score": 0.984375,
+      "box_xyxy": [
+        491.2109069824219,
+        58.628841400146484,
+        850.771240234375,
+        224.60369873046875
+      ],
+      "mask_pixels": 35827
+    },
+    {
+      "label": "surgical tool",
+      "score": 0.953125,
+      "box_xyxy": [
+        5.508882999420166,
+        137.0172576904297,
+        462.81695556640625,
+        298.0493469238281
+      ],
+      "mask_pixels": 43723
+    },
+    {
+      "label": "surgical tool",
+      "score": 0.82421875,
+      "box_xyxy": [
+        8.55971622467041,
+        9.875507354736328,
+        846.423095703125,
+        469.7059020996094
+      ],
+      "mask_pixels": 263759
+    },
+    {
+      "label": "surgical tool",
+      "score": 0.94921875,
+      "box_xyxy": [
+        6.184866428375244,
+        120.36446380615234,
+        473.0018005371094,
+        320.5727233886719
+      ],
+      "mask_pixels": 45335
+    }
+  ]
+}
