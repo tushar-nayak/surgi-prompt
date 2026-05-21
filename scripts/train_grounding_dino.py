@@ -226,7 +226,7 @@ def train(args: argparse.Namespace) -> None:
         RealGroundingDataset(train_samples),
         batch_size=args.batch_size,
         shuffle=True,
-        num_workers=args.num_workers,
+        num_workers=0,
         pin_memory=args.device.startswith("cuda"),
         collate_fn=GroundingCollator(processor, prompt_labels),
     )
@@ -235,7 +235,7 @@ def train(args: argparse.Namespace) -> None:
             RealGroundingDataset(val_samples),
             batch_size=args.batch_size,
             shuffle=False,
-            num_workers=args.num_workers,
+            num_workers=0,
             pin_memory=args.device.startswith("cuda"),
             collate_fn=GroundingCollator(processor, prompt_labels),
         )
@@ -359,7 +359,7 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument("--warmup-ratio", type=float, default=0.1)
     parser.add_argument("--grad-accum-steps", type=int, default=4)
     parser.add_argument("--max-grad-norm", type=float, default=1.0)
-    parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--max-train-images", type=int)
     parser.add_argument("--max-val-images", type=int)
     parser.add_argument("--freeze-text-encoder", action="store_true")

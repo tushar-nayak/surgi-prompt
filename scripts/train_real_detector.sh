@@ -8,15 +8,58 @@ if [[ $# -lt 4 ]]; then
   exit 1
 fi
 
+die_missing() {
+  echo "Missing or invalid path: $1"
+  exit 1
+}
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
+
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 
 if [[ ! -d .venv ]]; then
   python3 -m venv .venv
 fi
 source .venv/bin/activate
 
-pip install -r requirements.txt
+python -m pip install --upgrade pip
+
+ensure_python_package() {
+  local module_name="$1"
+  shift
+  if ! python -c "import ${module_name}" >/dev/null 2>&1; then
+    pip install "$@"
+  fi
+}
+
+ensure_torch_stack() {
+  if ! python - <<'PY' >/dev/null 2>&1
+import torch
+import torchvision
+PY
+  then
+    pip install torch torchvision
+  fi
+}
+
+ensure_python_package wheel wheel setuptools
+ensure_torch_stack
+ensure_python_package cv2 opencv-python
+ensure_python_package yaml pyyaml
+ensure_python_package tqdm tqdm
+ensure_python_package pycocotools pycocotools
+if ! python - <<'PY' >/dev/null 2>&1
+from torchmetrics.detection.mean_ap import MeanAveragePrecision
+PY
+then
+  pip install "torchmetrics[detection]"
+fi
+ensure_python_package transformers "transformers<5"
+ensure_python_package sam2 "git+https://github.com/facebookresearch/sam2.git"
+pip install --no-build-isolation "git+https://github.com/IDEA-Research/GroundingDINO.git"
+
+pip install -e .
 
 DATASET_TYPE="$1"
 TRAIN_IMAGES_DIR="$2"
@@ -29,6 +72,26 @@ RUN_NAME="${DATASET_TYPE}_train_${TIMESTAMP}"
 RUN_DIR="${BASE_OUTPUT_DIR%/}/${RUN_NAME}"
 mkdir -p "$RUN_DIR"
 
+[[ -d "$TRAIN_IMAGES_DIR" ]] || die_missing "$TRAIN_IMAGES_DIR"
+[[ -d "$(dirname "$BASE_OUTPUT_DIR")" ]] || die_missing "$(dirname "$BASE_OUTPUT_DIR")"
+if [[ "$DATASET_TYPE" == "coco" ]]; then
+  [[ -f "$DATASET_ARG" ]] || die_missing "$DATASET_ARG"
+  if [[ -n "$VAL_IMAGES_DIR" ]]; then
+    [[ -d "$VAL_IMAGES_DIR" ]] || die_missing "$VAL_IMAGES_DIR"
+  fi
+  if [[ -n "$VAL_DATASET_ARG" ]]; then
+    [[ -f "$VAL_DATASET_ARG" ]] || die_missing "$VAL_DATASET_ARG"
+  fi
+else
+  [[ -d "$DATASET_ARG" ]] || die_missing "$DATASET_ARG"
+  if [[ -n "$VAL_IMAGES_DIR" ]]; then
+    [[ -d "$VAL_IMAGES_DIR" ]] || die_missing "$VAL_IMAGES_DIR"
+  fi
+  if [[ -n "$VAL_DATASET_ARG" ]]; then
+    [[ -d "$VAL_DATASET_ARG" ]] || die_missing "$VAL_DATASET_ARG"
+  fi
+fi
+
 COMMON_ARGS=(
   --dataset-type "$DATASET_TYPE"
   --images-dir "$TRAIN_IMAGES_DIR"
@@ -36,10 +99,12 @@ COMMON_ARGS=(
   --device cuda
   --model-id IDEA-Research/grounding-dino-base
   --epochs 5
-  --batch-size 2
-  --grad-accum-steps 4
+  --batch-size 1
+  --grad-accum-steps 8
   --learning-rate 1e-5
   --weight-decay 1e-4
+  --freeze-text-encoder
+  --freeze-vision-backbone
 )
 
 VAL_ARGS=()
