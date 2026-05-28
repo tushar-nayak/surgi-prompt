@@ -43,10 +43,15 @@ class Sam2Segmenter:
             for det in detections:
                 masks, scores, _ = self.image_predictor.predict(
                     box=det.box_xyxy[None, :],
-                    multimask_output=False,
+                    multimask_output=True,
                 )
-                det.mask = masks[0].astype(bool)
-                det.score = max(det.score, float(scores[0]))
+                best_idx = int(scores.argmax())
+                mask = masks[best_idx].astype(bool)
+                mask = _postprocess_mask(mask)
+                det.mask = mask
+                # Weighted score: preserve detector confidence but let SAM
+                # modulate it (previously always-max never lowered scores).
+                det.score = 0.7 * det.score + 0.3 * float(scores[best_idx])
         return detections
 
     def track_video(
@@ -195,6 +200,20 @@ def _mask_to_box(mask: np.ndarray) -> np.ndarray | None:
     if xs.size == 0 or ys.size == 0:
         return None
     return np.array([xs.min(), ys.min(), xs.max(), ys.max()], dtype=np.float32)
+
+
+def _postprocess_mask(mask: np.ndarray) -> np.ndarray:
+    """Clean up a boolean mask: keep largest component + morphological closing."""
+    mask_u8 = mask.astype(np.uint8)
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask_u8, connectivity=8)
+    if num_labels > 2:
+        # Keep only the largest connected component (label 0 is background)
+        largest = 1 + stats[1:, cv2.CC_STAT_AREA].argmax()
+        mask_u8 = (labels == largest).astype(np.uint8)
+    # Morphological closing to fill small holes
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    mask_u8 = cv2.morphologyEx(mask_u8, cv2.MORPH_CLOSE, kernel)
+    return mask_u8.astype(bool)
 
 
 def _should_reground_adaptive(
