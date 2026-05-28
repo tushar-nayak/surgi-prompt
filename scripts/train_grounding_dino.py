@@ -3,11 +3,13 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import random
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import cv2
-from PIL import Image
+import numpy as np
+from PIL import Image, ImageEnhance, ImageFilter
 import torch
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
@@ -41,10 +43,11 @@ class RealGroundingDataset(Dataset):
 
 
 class GroundingCollator:
-    def __init__(self, processor, prompt_labels: list[str]) -> None:
+    def __init__(self, processor, prompt_labels: list[str], augment: bool = False) -> None:
         self.processor = processor
         self.prompt_labels = prompt_labels
         self.label_to_prompt_idx = {label: idx for idx, label in enumerate(prompt_labels)}
+        self.augment = augment
 
     def __call__(self, batch: list[DatasetSample]) -> dict[str, object]:
         images: list[Image.Image] = []
@@ -55,10 +58,17 @@ class GroundingCollator:
             if image_bgr is None:
                 raise FileNotFoundError(sample.image_path)
             image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-            images.append(Image.fromarray(image_rgb))
+            pil_image = Image.fromarray(image_rgb)
+
+            boxes_xyxy = sample.boxes_xyxy.copy() if sample.boxes_xyxy is not None else np.empty((0, 4), dtype=np.float32)
+            labels = list(sample.labels)
+            if self.augment:
+                pil_image, boxes_xyxy, valid_mask = _apply_augmentations(pil_image, boxes_xyxy)
+                labels = [l for l, v in zip(labels, valid_mask) if v]
+            images.append(pil_image)
 
             ann_objects = []
-            for box_xyxy, label in zip(sample.boxes_xyxy, sample.labels):
+            for box_xyxy, label in zip(boxes_xyxy, labels):
                 prompt_idx = self.label_to_prompt_idx.get(label)
                 if prompt_idx is None:
                     continue
@@ -88,6 +98,108 @@ class GroundingCollator:
         )
         encoded["sample_ids"] = sample_ids
         return encoded
+
+
+def _apply_augmentations(
+    image: Image.Image,
+    boxes_xyxy: np.ndarray,
+) -> tuple[Image.Image, np.ndarray, np.ndarray]:
+    """Apply training-time augmentations to image and boxes.
+
+    Augmentations: horizontal flip, small affine (rotation/translate/scale),
+    color jitter, and occasional Gaussian blur.  Spatial transforms update
+    the bounding-box coordinates accordingly.
+
+    Returns (image, boxes, valid_mask) where valid_mask is a bool array
+    indicating which input boxes survived (not clipped to degenerate).
+    """
+    width, height = image.size
+    boxes = boxes_xyxy.copy().astype(np.float64)
+
+    # --- horizontal flip (p=0.5) ---
+    if random.random() < 0.5:
+        image = image.transpose(Image.FLIP_LEFT_RIGHT)
+        if len(boxes):
+            x1 = boxes[:, 0].copy()
+            x2 = boxes[:, 2].copy()
+            boxes[:, 0] = width - x2
+            boxes[:, 2] = width - x1
+
+    # --- random affine (rotation, translate, scale) ---
+    angle = random.uniform(-15, 15)
+    tx = random.uniform(-0.05, 0.05) * width
+    ty = random.uniform(-0.05, 0.05) * height
+    scale = random.uniform(0.85, 1.15)
+
+    cx, cy = width / 2.0, height / 2.0
+    cos_a = math.cos(math.radians(angle)) * scale
+    sin_a = math.sin(math.radians(angle)) * scale
+    # PIL affine transform coefficients (inverse mapping)
+    a = cos_a
+    b = sin_a
+    c = cx - cos_a * cx - sin_a * cy + tx
+    d = -sin_a
+    e = cos_a
+    f = cy + sin_a * cx - cos_a * cy + ty
+    image = image.transform(
+        image.size,
+        Image.AFFINE,
+        (a, b, c, d, e, f),
+        resample=Image.BILINEAR,
+    )
+    if len(boxes):
+        # forward-transform box corners
+        fwd_a = cos_a
+        fwd_b = -sin_a
+        fwd_d = sin_a
+        fwd_e = cos_a
+        fwd_c = cx - fwd_a * cx - fwd_b * cy - tx
+        fwd_f = cy - fwd_d * cx - fwd_e * cy - ty
+        new_boxes = []
+        for box in boxes:
+            corners = np.array([
+                [box[0], box[1]],
+                [box[2], box[1]],
+                [box[2], box[3]],
+                [box[0], box[3]],
+            ])
+            transformed = np.column_stack([
+                fwd_a * corners[:, 0] + fwd_b * corners[:, 1] + fwd_c,
+                fwd_d * corners[:, 0] + fwd_e * corners[:, 1] + fwd_f,
+            ])
+            new_boxes.append([
+                transformed[:, 0].min(),
+                transformed[:, 1].min(),
+                transformed[:, 0].max(),
+                transformed[:, 1].max(),
+            ])
+        boxes = np.array(new_boxes, dtype=np.float64)
+
+    # --- color jitter ---
+    if random.random() < 0.8:
+        brightness = random.uniform(0.7, 1.3)
+        image = ImageEnhance.Brightness(image).enhance(brightness)
+        contrast = random.uniform(0.7, 1.3)
+        image = ImageEnhance.Contrast(image).enhance(contrast)
+        saturation = random.uniform(0.8, 1.2)
+        image = ImageEnhance.Color(image).enhance(saturation)
+
+    # --- Gaussian blur (p=0.15) ---
+    if random.random() < 0.15:
+        radius = random.uniform(0.5, 1.5)
+        image = image.filter(ImageFilter.GaussianBlur(radius=radius))
+
+    # --- clip boxes to image bounds and filter degenerate ---
+    valid = np.ones(len(boxes), dtype=bool)
+    if len(boxes):
+        boxes[:, 0] = np.clip(boxes[:, 0], 0, width - 1)
+        boxes[:, 1] = np.clip(boxes[:, 1], 0, height - 1)
+        boxes[:, 2] = np.clip(boxes[:, 2], 0, width - 1)
+        boxes[:, 3] = np.clip(boxes[:, 3], 0, height - 1)
+        valid = (boxes[:, 2] - boxes[:, 0] > 2) & (boxes[:, 3] - boxes[:, 1] > 2)
+        boxes = boxes[valid]
+
+    return image, boxes.astype(np.float32), valid
 
 
 def index_or_hash(value: int | str) -> int:
@@ -228,7 +340,7 @@ def train(args: argparse.Namespace) -> None:
         shuffle=True,
         num_workers=args.num_workers,
         pin_memory=args.device.startswith("cuda"),
-        collate_fn=GroundingCollator(processor, prompt_labels),
+        collate_fn=GroundingCollator(processor, prompt_labels, augment=not args.no_augment),
     )
     val_loader = (
         DataLoader(
@@ -365,6 +477,7 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument("--freeze-text-encoder", action="store_true")
     parser.add_argument("--freeze-vision-backbone", action="store_true")
     parser.add_argument("--disable-amp", action="store_true")
+    parser.add_argument("--no-augment", action="store_true", help="Disable training data augmentation.")
     return parser
 
 
