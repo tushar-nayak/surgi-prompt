@@ -26,6 +26,8 @@ def main() -> None:
     parser.add_argument("--min-active-tracks", type=int, default=1)
     parser.add_argument("--motion-iou-threshold", type=float, default=0.2)
     parser.add_argument("--area-ratio-threshold", type=float, default=0.45)
+    parser.add_argument("--box-threshold", type=float, default=0.30)
+    parser.add_argument("--text-threshold", type=float, default=0.25)
     parser.add_argument("--grounding-hf-model-id", default="IDEA-Research/grounding-dino-tiny")
     parser.add_argument("--grounding-force-hf-backend", action="store_true")
     args = parser.parse_args()
@@ -38,6 +40,8 @@ def main() -> None:
         pipeline = OpenVocabSurgicalPipeline(
             PipelineConfig(
                 device=args.device,
+                box_threshold=args.box_threshold,
+                text_threshold=args.text_threshold,
                 grounding_hf_model_id=args.grounding_hf_model_id,
                 grounding_force_hf_backend=args.grounding_force_hf_backend,
             )

@@ -13,9 +13,15 @@ def main() -> None:
     parser.add_argument("--prompt", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--device", default="cuda")
+    parser.add_argument("--box-threshold", type=float, default=0.30)
+    parser.add_argument("--text-threshold", type=float, default=0.25)
     args = parser.parse_args()
 
-    pipeline = OpenVocabSurgicalPipeline(PipelineConfig(device=args.device))
+    pipeline = OpenVocabSurgicalPipeline(PipelineConfig(
+        device=args.device,
+        box_threshold=args.box_threshold,
+        text_threshold=args.text_threshold,
+    ))
     detections, fps = pipeline.run_image(args.image, args.prompt)
     pipeline.annotate_image(args.image, detections, args.output)
     write_json(
