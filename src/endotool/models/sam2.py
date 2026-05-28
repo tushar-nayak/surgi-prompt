@@ -185,7 +185,7 @@ def _extract_video_frames(video_path: str | Path, output_dir: Path) -> list[Path
         ok, frame = cap.read()
         if not ok:
             break
-        path = output_dir / f"{idx:05d}.jpg"
+        path = output_dir / f"{idx:05d}.png"
         cv2.imwrite(str(path), frame)
         paths.append(path)
         idx += 1
