@@ -29,6 +29,8 @@ class EpochMetrics:
     train_loss: float
     val_loss: float | None
     learning_rate: float
+    val_bbox_map: float | None = None
+    val_bbox_map_50: float | None = None
 
 
 class RealGroundingDataset(Dataset):
@@ -268,10 +270,28 @@ def build_scheduler(optimizer: AdamW, num_training_steps: int, num_warmup_steps:
     return LambdaLR(optimizer, lr_lambda)
 
 
-def evaluate(model, loader: DataLoader, device: str, use_amp: bool) -> float:
+def evaluate(
+    model,
+    loader: DataLoader,
+    device: str,
+    use_amp: bool,
+    processor=None,
+    val_samples: list[DatasetSample] = None,
+    prompt_labels: list[str] = None,
+    box_threshold: float = 0.30,
+    text_threshold: float = 0.25,
+) -> tuple[float, float | None, float | None]:
     model.eval()
     running_loss = 0.0
     num_batches = 0
+
+    compute_map = processor is not None and val_samples and prompt_labels
+    if compute_map:
+        from torchmetrics.detection.mean_ap import MeanAveragePrecision
+        det_map = MeanAveragePrecision(box_format="xyxy", iou_type="bbox")
+        val_samples_by_id = {str(sample.image_id): sample for sample in val_samples}
+        label_to_prompt_idx = {label.strip().lower(): idx for idx, label in enumerate(prompt_labels)}
+
     for batch in tqdm(loader, desc="val", leave=False):
         batch = move_batch_to_device(batch, device)
         with torch.inference_mode():
@@ -286,7 +306,66 @@ def evaluate(model, loader: DataLoader, device: str, use_amp: bool) -> float:
                 )
         running_loss += float(outputs.loss.item())
         num_batches += 1
-    return running_loss / max(1, num_batches)
+
+        if compute_map:
+            target_sizes = []
+            for sample_id in batch["sample_ids"]:
+                sample = val_samples_by_id.get(sample_id)
+                if sample is None:
+                    target_sizes.append([800, 800])
+                    continue
+                with Image.open(sample.image_path) as img:
+                    w, h = img.size
+                target_sizes.append([h, w])
+
+            target_sizes_t = torch.tensor(target_sizes, device=device)
+            results = processor.post_process_grounded_object_detection(
+                outputs,
+                batch["input_ids"],
+                threshold=box_threshold,
+                text_threshold=text_threshold,
+                target_sizes=target_sizes_t,
+            )
+
+            for batch_idx, sample_id in enumerate(batch["sample_ids"]):
+                sample = val_samples_by_id.get(sample_id)
+                if sample is None:
+                    continue
+
+                res = results[batch_idx]
+                pred_boxes = res["boxes"].cpu()
+                pred_scores = res["scores"].cpu()
+                pred_labels_str = res["labels"]
+
+                pred_labels_idx = []
+                for label in pred_labels_str:
+                    pred_labels_idx.append(label_to_prompt_idx.get(label.strip().lower(), 0))
+                pred_labels = torch.tensor(pred_labels_idx, dtype=torch.int64)
+
+                gt_boxes = torch.tensor(sample.boxes_xyxy, dtype=torch.float32)
+                gt_labels_idx = []
+                for label in sample.labels:
+                    gt_labels_idx.append(label_to_prompt_idx.get(label.strip().lower(), 0))
+                gt_labels = torch.tensor(gt_labels_idx, dtype=torch.int64)
+
+                det_map.update(
+                    [dict(boxes=pred_boxes, scores=pred_scores, labels=pred_labels)],
+                    [dict(boxes=gt_boxes, labels=gt_labels)],
+                )
+
+    val_loss = running_loss / max(1, num_batches)
+    val_bbox_map = None
+    val_bbox_map_50 = None
+    if compute_map:
+        try:
+            map_res = det_map.compute()
+            val_bbox_map = float(map_res["map"].item())
+            val_bbox_map_50 = float(map_res["map_50"].item())
+        except Exception:
+            val_bbox_map = 0.0
+            val_bbox_map_50 = 0.0
+
+    return val_loss, val_bbox_map, val_bbox_map_50
 
 
 def train(args: argparse.Namespace) -> None:
@@ -415,12 +494,26 @@ def train(args: argparse.Namespace) -> None:
             progress.set_postfix(loss=f"{running_loss / max(1, num_batches):.4f}")
 
         train_loss = running_loss / max(1, num_batches)
-        val_loss = evaluate(model, val_loader, args.device, use_amp) if val_loader is not None else None
+        if val_loader is not None:
+            val_loss, val_bbox_map, val_bbox_map_50 = evaluate(
+                model=model,
+                loader=val_loader,
+                device=args.device,
+                use_amp=use_amp,
+                processor=processor,
+                val_samples=val_samples,
+                prompt_labels=prompt_labels,
+            )
+        else:
+            val_loss, val_bbox_map, val_bbox_map_50 = None, None, None
+
         metrics = EpochMetrics(
             epoch=epoch,
             train_loss=train_loss,
             val_loss=val_loss,
             learning_rate=float(optimizer.param_groups[0]["lr"]),
+            val_bbox_map=val_bbox_map,
+            val_bbox_map_50=val_bbox_map_50,
         )
         history.append(asdict(metrics))
         (output_dir / "history.json").write_text(json.dumps(history, indent=2))
@@ -455,6 +548,8 @@ def train(args: argparse.Namespace) -> None:
     final_dir.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(final_dir)
     processor.save_pretrained(final_dir)
+    best_val_bbox_map = max([h["val_bbox_map"] for h in history if h.get("val_bbox_map") is not None], default=None)
+    best_val_bbox_map_50 = max([h["val_bbox_map_50"] for h in history if h.get("val_bbox_map_50") is not None], default=None)
     summary = {
         "model_id": args.model_id,
         "prompt_labels": prompt_labels,
@@ -462,6 +557,8 @@ def train(args: argparse.Namespace) -> None:
         "num_val_samples": len(val_samples),
         "epochs": args.epochs,
         "best_val_loss": None if best_val_loss == float("inf") else best_val_loss,
+        "best_val_bbox_map": best_val_bbox_map,
+        "best_val_bbox_map_50": best_val_bbox_map_50,
         "final_train_loss": history[-1]["train_loss"] if history else None,
         "final_val_loss": history[-1]["val_loss"] if history else None,
         "best_checkpoint": str((output_dir / "best").resolve()),
