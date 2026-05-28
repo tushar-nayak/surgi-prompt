@@ -366,6 +366,7 @@ def train(args: argparse.Namespace) -> None:
     (output_dir / "train_config.json").write_text(json.dumps(vars(args), indent=2))
 
     best_val_loss = float("inf")
+    epochs_without_improvement = 0
     history: list[dict[str, object]] = []
     global_step = 0
     use_amp = args.device.startswith("cuda") and not args.disable_amp
@@ -421,15 +422,24 @@ def train(args: argparse.Namespace) -> None:
 
         if val_loss is not None and val_loss < best_val_loss:
             best_val_loss = val_loss
+            epochs_without_improvement = 0
             best_dir = output_dir / "best"
             best_dir.mkdir(parents=True, exist_ok=True)
             model.save_pretrained(best_dir)
             processor.save_pretrained(best_dir)
+        elif val_loss is not None:
+            epochs_without_improvement += 1
         elif val_loss is None and epoch == args.epochs:
             best_dir = output_dir / "best"
             best_dir.mkdir(parents=True, exist_ok=True)
             model.save_pretrained(best_dir)
             processor.save_pretrained(best_dir)
+
+        # early stopping check
+        if args.early_stopping_patience > 0 and val_loss is not None:
+            if epochs_without_improvement >= args.early_stopping_patience:
+                print(f"Early stopping: no improvement for {args.early_stopping_patience} epochs.")
+                break
 
     final_dir = output_dir / "last"
     final_dir.mkdir(parents=True, exist_ok=True)
@@ -464,7 +474,7 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument("--model-id", default="IDEA-Research/grounding-dino-base")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--epochs", type=int, default=5)
+    parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--learning-rate", type=float, default=1e-5)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
@@ -478,6 +488,8 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument("--freeze-vision-backbone", action="store_true")
     parser.add_argument("--disable-amp", action="store_true")
     parser.add_argument("--no-augment", action="store_true", help="Disable training data augmentation.")
+    parser.add_argument("--early-stopping-patience", type=int, default=5,
+                        help="Stop if val loss does not improve for N epochs. 0 = disabled.")
     return parser
 
 

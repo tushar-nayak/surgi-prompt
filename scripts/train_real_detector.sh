@@ -98,7 +98,7 @@ COMMON_ARGS=(
   --output-dir "$RUN_DIR/train"
   --device cuda
   --model-id IDEA-Research/grounding-dino-base
-  --epochs 5
+  --epochs 20
   --batch-size 1
   --grad-accum-steps 8
   --learning-rate 1e-5
