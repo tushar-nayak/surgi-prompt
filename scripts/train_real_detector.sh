@@ -181,8 +181,8 @@ PY
     --prompt "$PROMPT" \
     --output-dir "$TRACKING_EVAL_DIR" \
     --device cuda \
-    --reground-mode hybrid \
-    --reground-every 16 \
+    --reground-mode fixed \
+    --reground-every 0 \
     --min-active-tracks 1 \
     --motion-iou-threshold 0.1 \
     --area-ratio-threshold 0.3 \
