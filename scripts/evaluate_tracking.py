@@ -30,10 +30,14 @@ def main() -> None:
     parser.add_argument("--text-threshold", type=float, default=0.25)
     parser.add_argument("--grounding-hf-model-id", default="IDEA-Research/grounding-dino-tiny")
     parser.add_argument("--grounding-force-hf-backend", action="store_true")
+    parser.add_argument("--eval-category-id", type=int, default=6,
+                        help="Category ID to evaluate tracking on (default: 6 for surgical tool)")
     args = parser.parse_args()
 
     output_dir = ensure_dir(args.output_dir)
-    frames, gt_by_frame = load_video_keyframes(args.images_dir, args.annotations, args.video_id)
+    frames, gt_by_frame = load_video_keyframes(
+        args.images_dir, args.annotations, args.video_id, args.eval_category_id
+    )
     video_path = build_temp_video(frames)
 
     try:
@@ -77,7 +81,12 @@ def main() -> None:
         Path(video_path).unlink(missing_ok=True)
 
 
-def load_video_keyframes(images_dir: str, annotations_path: str, video_id: str) -> tuple[list[Path], dict[int, list[np.ndarray]]]:
+def load_video_keyframes(
+    images_dir: str,
+    annotations_path: str,
+    video_id: str,
+    eval_category_id: int,
+) -> tuple[list[Path], dict[int, list[np.ndarray]]]:
     payload = json.loads(Path(annotations_path).read_text())
     images = [img for img in payload["images"] if str(img.get("video_id", "") or Path(img["file_name"]).stem.split("_")[0]) == str(video_id)]
     images = sorted(images, key=lambda item: item["file_name"])
@@ -86,7 +95,7 @@ def load_video_keyframes(images_dir: str, annotations_path: str, video_id: str) 
     for ann in payload["annotations"]:
         if ann["image_id"] not in selected_ids:
             continue
-        if ann["category_id"] != 6:
+        if ann["category_id"] != eval_category_id:
             continue
         x, y, w, h = ann["bbox"]
         gt_by_image[ann["image_id"]].append(np.array([x, y, x + w, y + h], dtype=np.float32))
