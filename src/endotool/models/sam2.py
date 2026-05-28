@@ -72,9 +72,11 @@ class Sam2Segmenter:
             frame_paths = _extract_video_frames(video_path, frame_dir)
             state = self.video_predictor.init_state(video_path=str(frame_dir))
             object_seeds: dict[int, Detection] = {}
+            consecutive_misses: dict[int, int] = {}
             with torch.inference_mode(), torch.autocast(device_type=self.device.split(":")[0], dtype=self.autocast_dtype, enabled=self.device.startswith("cuda")):
                 for obj_id, det in enumerate(detections, start=1):
                     object_seeds[obj_id] = det
+                    consecutive_misses[obj_id] = 0
                     self.video_predictor.add_new_points_or_box(
                         inference_state=state,
                         frame_idx=0,
@@ -90,13 +92,21 @@ class Sam2Segmenter:
                     active_tracks: dict[int, Detection] = {}
                     image = cv2.imread(str(frame_paths[frame_idx]), cv2.IMREAD_COLOR)
                     for obj_id, mask_logit in zip(object_ids, mask_logits):
+                        obj_id_int = int(obj_id)
+                        if consecutive_misses.get(obj_id_int, 0) >= 15:
+                            continue
+
                         mask = mask_logit[0].cpu().numpy() > 0.0
                         box = _mask_to_box(mask)
                         if box is None:
+                            consecutive_misses[obj_id_int] = consecutive_misses.get(obj_id_int, 0) + 1
                             continue
-                        seed = object_seeds.get(int(obj_id))
+
+                        seed = object_seeds.get(obj_id_int)
                         if seed is None:
                             continue
+
+                        consecutive_misses[obj_id_int] = 0
                         det = Detection(
                             label=seed.label,
                             score=seed.score,
@@ -105,7 +115,7 @@ class Sam2Segmenter:
                             label_id=seed.label_id,
                         )
                         current.append(det)
-                        active_tracks[int(obj_id)] = det
+                        active_tracks[obj_id_int] = det
                     should_reground = False
                     if detector is not None and prompt and frame_idx > 0:
                         if reground_mode == "fixed":
@@ -138,6 +148,7 @@ class Sam2Segmenter:
                         for track_id, det in matches:
                             reground_stats["matched_refreshes"] += 1
                             object_seeds[track_id] = det
+                            consecutive_misses[track_id] = 0
                             self.video_predictor.add_new_points_or_box(
                                 inference_state=state,
                                 frame_idx=frame_idx,
@@ -149,6 +160,7 @@ class Sam2Segmenter:
                             add_idx = next_obj_id + offset
                             reground_stats["new_tracks"] += 1
                             object_seeds[add_idx] = det
+                            consecutive_misses[add_idx] = 0
                             self.video_predictor.add_new_points_or_box(
                                 inference_state=state,
                                 frame_idx=frame_idx,
