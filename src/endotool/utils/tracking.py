@@ -86,27 +86,37 @@ def match_detections_to_tracks(
     tracks: dict[int, Detection],
     iou_threshold: float = 0.35,
 ) -> tuple[list[tuple[int, Detection]], list[Detection]]:
-    assigned_tracks: set[int] = set()
-    matches: list[tuple[int, Detection]] = []
-    unmatched: list[Detection] = []
+    if not refreshed:
+        return [], []
+    if not tracks:
+        return [], list(refreshed)
 
-    for det in sorted(refreshed, key=lambda item: item.score, reverse=True):
-        best_track_id = None
-        best_iou = 0.0
-        for track_id, track_det in tracks.items():
-            if track_id in assigned_tracks:
-                continue
+    from scipy.optimize import linear_sum_assignment
+
+    track_ids = list(tracks.keys())
+    track_dets = [tracks[tid] for tid in track_ids]
+
+    cost_matrix = np.zeros((len(refreshed), len(tracks)), dtype=np.float32)
+    for i, det in enumerate(refreshed):
+        for j, track_det in enumerate(track_dets):
             if not labels_are_compatible(det.label, track_det.label):
-                continue
-            iou = box_iou(det.box_xyxy, track_det.box_xyxy)
-            if iou > best_iou:
-                best_iou = iou
-                best_track_id = track_id
-        if best_track_id is not None and best_iou >= iou_threshold:
-            assigned_tracks.add(best_track_id)
-            matches.append((best_track_id, det))
-        else:
-            unmatched.append(det)
+                cost_matrix[i, j] = 1e9
+            else:
+                iou = box_iou(det.box_xyxy, track_det.box_xyxy)
+                cost_matrix[i, j] = 1.0 - iou
+
+    row_ind, col_ind = linear_sum_assignment(cost_matrix)
+
+    matches: list[tuple[int, Detection]] = []
+    matched_refreshed_indices = set()
+
+    for r, c in zip(row_ind, col_ind):
+        cost = cost_matrix[r, c]
+        if cost < (1.0 - iou_threshold):
+            matches.append((track_ids[c], refreshed[r]))
+            matched_refreshed_indices.add(r)
+
+    unmatched = [det for r, det in enumerate(refreshed) if r not in matched_refreshed_indices]
     return matches, unmatched
 
 
