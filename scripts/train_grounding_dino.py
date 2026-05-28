@@ -354,9 +354,19 @@ def train(args: argparse.Namespace) -> None:
         if val_samples
         else None
     )
-
-    trainable_params = [param for param in model.parameters() if param.requires_grad]
-    optimizer = AdamW(trainable_params, lr=args.learning_rate, weight_decay=args.weight_decay)
+    # Build parameter groups with layer-wise learning rate
+    backbone_param_ids = set()
+    if not args.freeze_vision_backbone:
+        backbone_param_ids = {id(p) for p in model.model.backbone.parameters() if p.requires_grad}
+    backbone_params = [p for p in model.parameters() if p.requires_grad and id(p) in backbone_param_ids]
+    head_params = [p for p in model.parameters() if p.requires_grad and id(p) not in backbone_param_ids]
+    param_groups = []
+    if head_params:
+        param_groups.append({"params": head_params, "lr": args.learning_rate})
+    if backbone_params:
+        param_groups.append({"params": backbone_params, "lr": args.learning_rate * args.backbone_lr_factor})
+    trainable_params = head_params + backbone_params
+    optimizer = AdamW(param_groups, weight_decay=args.weight_decay)
     total_steps = math.ceil(len(train_loader) / max(1, args.grad_accum_steps)) * args.epochs
     warmup_steps = int(total_steps * args.warmup_ratio)
     scheduler = build_scheduler(optimizer, total_steps, warmup_steps)
@@ -486,6 +496,8 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument("--max-val-images", type=int)
     parser.add_argument("--freeze-text-encoder", action="store_true")
     parser.add_argument("--freeze-vision-backbone", action="store_true")
+    parser.add_argument("--backbone-lr-factor", type=float, default=0.1,
+                        help="LR multiplier for vision backbone params (default 0.1x head LR).")
     parser.add_argument("--disable-amp", action="store_true")
     parser.add_argument("--no-augment", action="store_true", help="Disable training data augmentation.")
     parser.add_argument("--early-stopping-patience", type=int, default=5,

@@ -104,7 +104,6 @@ COMMON_ARGS=(
   --learning-rate 1e-5
   --weight-decay 1e-4
   --freeze-text-encoder
-  --freeze-vision-backbone
 )
 
 VAL_ARGS=()
