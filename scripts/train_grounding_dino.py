@@ -226,7 +226,7 @@ def train(args: argparse.Namespace) -> None:
         RealGroundingDataset(train_samples),
         batch_size=args.batch_size,
         shuffle=True,
-        num_workers=0,
+        num_workers=args.num_workers,
         pin_memory=args.device.startswith("cuda"),
         collate_fn=GroundingCollator(processor, prompt_labels),
     )
@@ -235,7 +235,7 @@ def train(args: argparse.Namespace) -> None:
             RealGroundingDataset(val_samples),
             batch_size=args.batch_size,
             shuffle=False,
-            num_workers=0,
+            num_workers=args.num_workers,
             pin_memory=args.device.startswith("cuda"),
             collate_fn=GroundingCollator(processor, prompt_labels),
         )
